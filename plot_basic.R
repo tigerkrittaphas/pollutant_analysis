@@ -34,7 +34,7 @@ dat <- dat %>%
 # Select the numeric columns you want to summarize
 cols_to_summarize <- c(
   "O3", "PM2.5", "PM10", "NO2", "NOX", "CO", "SO2",
-  "hf_prim", "humidity", "temperature", "pressure"
+  "hf_prim", "af_prim", "humidity", "temperature", "pressure"
 )
 
 # Apply the summary function to each column and transpose the result
@@ -53,7 +53,7 @@ dimnames(tab1) <- list(
   c(
     "Ozone (O3)", "Fine Particulate Matter (PM2.5)", "Particulate Matter (PM10)",
     "Nitrogen Dioxide (NO2)", "Nitrogen Oxides (NOX)", "Carbon Monoxide (CO)",
-    "Sulfur Dioxide (SO2)", "HF Hospitalization", "Humidity (%)",
+    "Sulfur Dioxide (SO2)", "HF Hospitalization", "AF Hospitalization", "Humidity (%)",
     "Temperature (Celsius)", "Air Pressure (hPa)"
   ),
   c("Mean", "SD", "Min", "25%", "Median", "75%", "Max")

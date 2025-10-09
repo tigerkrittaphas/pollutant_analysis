@@ -1,6 +1,12 @@
 set.seed(123)
 setwd("~/Projects/hf_pm_analysis")
 
+# Load necessary libraries
+library(ggplot2)
+library(sf)
+library(dplyr)
+library(geodata)
+
 dat <- read.csv("data/daily_all_weather_30jul.csv")
 
 # properly format date
@@ -20,13 +26,6 @@ dat <- dat %>%
   filter(!prov_name %in% invalid_prov)
 
 # =================
-
-# Load necessary libraries
-library(ggplot2)
-library(sf)
-library(dplyr)
-library(geodata)
-
 # Download province-level (level=1) data for Thailand
 thailand_provinces <- gadm(country = "THA", level = 1, path = tempdir()) |>
   st_as_sf()
@@ -105,7 +104,7 @@ ggplot(data = thailand_map_with_pm25) +
     na.value = "darkgrey"
   ) + # Use a nice color scale
   labs(
-    title = "Avearge PM2.5 levels by Province in Thailand",
+    title = "Average PM2.5 levels by Province in Thailand",
     fill = "Average PM2.5",
   ) +
   theme(
