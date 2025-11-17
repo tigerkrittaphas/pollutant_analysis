@@ -29,6 +29,47 @@ library(xtable)
 # Set seed for reproducibility
 set.seed(123)
 
+# ============================
+# Helper Functions
+# ============================
+
+calculate_p <- function(estimate, lower, upper) {
+  estimate <- as.numeric(estimate)
+  lower <- as.numeric(lower)
+  upper <- as.numeric(upper)
+
+  valid <- !is.na(estimate) & !is.na(lower) & !is.na(upper) & estimate > 0 & lower > 0 & upper > 0
+  se <- rep(NA_real_, length(estimate))
+  se[valid] <- (log(upper[valid]) - log(lower[valid])) / (2 * 1.96)
+  valid <- valid & se > 0
+
+  z <- rep(NA_real_, length(estimate))
+  z[valid] <- log(estimate[valid]) / se[valid]
+
+  p <- rep(NA_real_, length(estimate))
+  p[valid] <- 2 * stats::pnorm(-abs(z[valid]))
+  return(p)
+}
+
+add_p_value_column <- function(df, rr_col = "RR", lower_col = "Lower", upper_col = "Upper", new_col = "p_value") {
+  cols_present <- c(rr_col, lower_col, upper_col) %in% names(df)
+  if (!all(cols_present)) {
+    return(df)
+  }
+  df[[rr_col]] <- as.numeric(df[[rr_col]])
+  df[[lower_col]] <- as.numeric(df[[lower_col]])
+  df[[upper_col]] <- as.numeric(df[[upper_col]])
+  df[[new_col]] <- calculate_p(df[[rr_col]], df[[lower_col]], df[[upper_col]])
+  return(df)
+}
+
+ensure_p_value_column <- function(df, rr_col = "RR", lower_col = "Lower", upper_col = "Upper", new_col = "p_value") {
+  if (!(new_col %in% names(df))) {
+    df <- add_p_value_column(df, rr_col, lower_col, upper_col, new_col)
+  }
+  return(df)
+}
+
 
 # ===================================================================
 # MAIN ANALYSIS FUNCTION
@@ -192,6 +233,8 @@ run_analysis_for_subgroup <- function(subgroup_data,
     # properly sort the columns order
     RR_pooled_lagged <- RR_pooled_lagged[, c("Lag", "RR", "Lower", "Upper")]
     RR_pooled_cumulative <- RR_pooled_cumulative[, c("Lag", "RR", "Lower", "Upper")]
+    RR_pooled_lagged <- add_p_value_column(RR_pooled_lagged)
+    RR_pooled_cumulative <- add_p_value_column(RR_pooled_cumulative)
 
     write.csv(RR_pooled_lagged, file.path(results_dir, "pooled_lagged_RR.csv"), row.names = FALSE)
     write.csv(RR_pooled_cumulative, file.path(results_dir, "pooled_cumulative_RR.csv"), row.names = FALSE)
@@ -265,6 +308,8 @@ run_analysis_for_subgroup <- function(subgroup_data,
   # properly sort the columns order
   RR_pooled_lagged <- RR_pooled_lagged[, c("Lag", "RR", "Lower", "Upper")]
   RR_pooled_cumulative <- RR_pooled_cumulative[, c("Lag", "RR", "Lower", "Upper")]
+  RR_pooled_lagged <- add_p_value_column(RR_pooled_lagged)
+  RR_pooled_cumulative <- add_p_value_column(RR_pooled_cumulative)
 
   write.csv(RR_pooled_lagged, file.path(results_dir, "pooled_lagged_RR.csv"), row.names = FALSE)
   write.csv(RR_pooled_cumulative, file.path(results_dir, "pooled_cumulative_RR.csv"), row.names = FALSE)
@@ -323,7 +368,7 @@ dat_full$stratum <- as.factor(dat_full$year:dat_full$month:dat_full$dow)
 POLLUTANT_VAR <- "PM2.5"
 OUTCOME_VAR <- "hf_prim"
 LAG <- 7
-BASE_OUTPUT_DIR <- "output/regional_subgroup_analysis_30jul"
+BASE_OUTPUT_DIR <- "output/regional_subgroup_analysis_16Nov"
 # The column name in 'dat_full' used to split the data into subgroups.
 # Ensure this column exists in your dataframe. For now we can analyse "region" and "nhso_region_code"
 SUBGROUPING_COLUMN <- "nhso_region_code"
@@ -395,26 +440,30 @@ write.csv(geo_code_map, file.path(BASE_OUTPUT_DIR, "regions_mapping.csv"), row.n
 # read pooled estimates for all provinces
 RR_pooled_lagged <- read.csv("/Users/tiger/Projects/hf_pm_analysis/output/30jul/results_PM2.5-hf_prim-7lag/pooled_lagged_RR.csv") %>%
   filter(Lag == 0) %>%
+  ensure_p_value_column() %>%
   mutate(
     RR = round(RR, 4),
     Lower = round(Lower, 4),
     Upper = round(Upper, 4),
+    p_value = round(p_value, 5),
     Region = "Pooled",
     pooled = TRUE
   ) %>%
   select(-Lag) %>%
-  select(c("Region", "RR", "Lower", "Upper", "pooled"))
+  select(c("Region", "RR", "Lower", "Upper", "p_value", "pooled"))
 
 for (i in seq(subgroups)) {
   subgroup_rr <- RR_pooled_list[[i]]["lag0", ] %>%
+    ensure_p_value_column() %>%
     mutate(
       RR = round(RR, 4),
       Lower = round(Lower, 4),
       Upper = round(Upper, 4),
+      p_value = round(p_value, 5),
       Region = subgroups[i],
       pooled = FALSE
     ) %>%
-    select(c("Region", "RR", "Lower", "Upper", "pooled"))
+    select(c("Region", "RR", "Lower", "Upper", "p_value", "pooled"))
   RR_pooled_lagged <- rbind(RR_pooled_lagged, subgroup_rr)
 }
 
