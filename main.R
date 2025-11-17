@@ -16,10 +16,10 @@ library(xtable)
 
 ## SELECT POLLUTANT OF INTEREST
 pollutant_col_name <- "PM2.5"
-outcome_col_name <- "hf_prim_over65"
+outcome_col_name <- "hf_prim"
 
 lag_number <- 7
-output_dir <- "30jul"
+output_dir <- "17Oct"
 
 # ===========================
 # properly format date
@@ -31,14 +31,9 @@ dat$year <- as.factor(format(dat$date_start, format = "%Y"))
 # get strata for case crossover analysis
 dat$stratum <- as.factor(dat$year:dat$month:dat$dow)
 
-prov_name <- as.character(unique(dat$prov_name))
-
 # separate dataframe by provinces
-datalist <- lapply(
-  provinces,
-  function(provname) dat[dat$prov_name == provname, ]
-)
-names(datalist) <- prov_name
+datalist <- split(dat, dat$prov_name, drop = TRUE)
+prov_name <- names(datalist)
 
 # ============================
 
@@ -583,6 +578,17 @@ system.time(
     }
   }
 )
+
+## P-value calculation from 95%CI
+# Reference from: https://www.bmj.com/content/343/bmj.d2304
+
+# Calculate p for ratio measure
+calculate_p <- function(estimate, lower, upper) {
+  se = (log(upper)- log(lower)) / (2 * 1.96)
+  z = abs(log(estimate) / se)
+  p = exp(-0.717 * z - 0.416* z^2)
+}
+
 
 ##################################################
 ## SAVE RESULTS TO FILES FOR LATER COMPARISON ##
