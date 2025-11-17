@@ -16,10 +16,10 @@ library(xtable)
 
 ## SELECT POLLUTANT OF INTEREST
 pollutant_col_name <- "PM2.5"
-outcome_col_name <- "hf_prim"
+outcome_col_name <- "hf_prim_65"
 
 lag_number <- 7
-output_dir <- "17Oct"
+output_dir <- "16Nov"
 
 # ===========================
 # properly format date
@@ -584,9 +584,62 @@ system.time(
 
 # Calculate p for ratio measure
 calculate_p <- function(estimate, lower, upper) {
-  se = (log(upper)- log(lower)) / (2 * 1.96)
-  z = abs(log(estimate) / se)
-  p = exp(-0.717 * z - 0.416* z^2)
+  estimate <- as.numeric(estimate)
+  lower <- as.numeric(lower)
+  upper <- as.numeric(upper)
+
+  valid <- !is.na(estimate) & !is.na(lower) & !is.na(upper) & estimate > 0 & lower > 0 & upper > 0
+  se <- rep(NA_real_, length(estimate))
+  se[valid] <- (log(upper[valid]) - log(lower[valid])) / (2 * 1.96)
+  valid <- valid & se > 0
+
+  z <- rep(NA_real_, length(estimate))
+  z[valid] <- log(estimate[valid]) / se[valid]
+
+  p <- rep(NA_real_, length(estimate))
+  p[valid] <- 2 * stats::pnorm(-abs(z[valid]))
+  return(p)
+}
+
+add_p_value_column <- function(df, rr_col = "RR", lower_col = "Lower", upper_col = "Upper", new_col = "p_value") {
+  cols_present <- c(rr_col, lower_col, upper_col) %in% names(df)
+  if (!all(cols_present)) {
+    return(df)
+  }
+  df[[rr_col]] <- as.numeric(df[[rr_col]])
+  df[[lower_col]] <- as.numeric(df[[lower_col]])
+  df[[upper_col]] <- as.numeric(df[[upper_col]])
+  df[[new_col]] <- calculate_p(df[[rr_col]], df[[lower_col]], df[[upper_col]])
+  return(df)
+}
+
+format_p_value <- function(p) {
+  p <- as.numeric(p)
+  formatted <- rep(NA_character_, length(p))
+  formatted[is.na(p)] <- NA_character_
+  formatted[p >= 0.001] <- paste0("p = ", formatC(p[p >= 0.001], format = "f", digits = 3))
+  formatted[p < 0.001] <- "p < 0.001"
+  return(formatted)
+}
+
+format_raw_p_value <- function(p) {
+  p <- as.numeric(p)
+  formatted <- rep(NA_character_, length(p))
+  formatted[is.na(p)] <- NA_character_
+  formatted[p == 0] <- "0"
+
+  valid <- !is.na(p) & p > 0
+  if (any(valid)) {
+    sci <- formatC(p[valid], format = "e", digits = 2)
+    parts <- strsplit(sci, "e", fixed = TRUE)
+    mantissa <- vapply(parts, function(x) x[[1]], character(1))
+    exponent <- vapply(parts, function(x) x[[2]], character(1))
+    mantissa <- sprintf("%.2f", as.numeric(mantissa))
+    exponent <- as.integer(exponent)
+    formatted[valid] <- paste0(mantissa, " x 10^", exponent)
+  }
+
+  return(formatted)
 }
 
 
@@ -631,6 +684,7 @@ if (exists("cpred_pooled_pollutant")) {
 
   # Reorder columns
   pooled_cumulative_RR_df <- pooled_cumulative_RR_df[, c("Lag", "RR", "Lower", "Upper")]
+  pooled_cumulative_RR_df <- add_p_value_column(pooled_cumulative_RR_df)
 
   # save to csv
   write.csv(pooled_cumulative_RR_df, file.path(results_dir, "pooled_cumulative_RR.csv"), row.names = FALSE)
@@ -652,6 +706,7 @@ if (exists("lagged_RR_pooled_pollutant")) {
   lagged_RR_pooled_pollutant_df$Lag <- 0:(nrow(lagged_RR_pooled_pollutant_df) - 1)
   # Reorder columns
   lagged_RR_pooled_pollutant_df <- lagged_RR_pooled_pollutant_df[, c("Lag", "RR", "Lower", "Upper")]
+  lagged_RR_pooled_pollutant_df <- add_p_value_column(lagged_RR_pooled_pollutant_df)
 
   write.csv(lagged_RR_pooled_pollutant_df, file.path(results_dir, "pooled_lagged_RR.csv"), row.names = FALSE)
   cat("Saved: pooled_lagged_RR.csv\n")
@@ -661,6 +716,7 @@ if (exists("lagged_RR_pooled_pollutant")) {
 if (exists("RR_overall_prov_pollutant")) {
   RR_overall_prov_pollutant_df <- as.data.frame(RR_overall_prov_pollutant)
   RR_overall_prov_pollutant_df <- cbind(Province = rownames(RR_overall_prov_pollutant_df), RR_overall_prov_pollutant_df)
+  RR_overall_prov_pollutant_df <- add_p_value_column(RR_overall_prov_pollutant_df)
   write.csv(RR_overall_prov_pollutant_df, file.path(results_dir, "province_specific_overall_RR.csv"), row.names = FALSE)
   cat("Saved: province_specific_overall_RR.csv\n")
 }
@@ -679,18 +735,19 @@ for (lag_val in 0:lag_number) { # Use lag_number
     current_lag_df <- cbind(Province = rownames(current_lag_df), current_lag_df)
     rownames(current_lag_df) <- NULL # Remove row names after putting them in a column
 
-    # Save individual file for this lag
-    file_name_individual <- paste0("province_specific_lag", lag_val, "_RR.csv")
-    write.csv(current_lag_df, file.path(results_dir, file_name_individual), row.names = FALSE)
-    cat("Saved:", file_name_individual, "\n")
-
     # Add to the list for a combined file (make sure column names are consistent)
     # The 'Lag' column in your current objects is like "Lag 0", "Lag 1", etc.
     # For a combined file, it's better to have a numeric lag column.
     # We'll extract the numeric part or assume based on lag_val.
     # For simplicity, we'll assume the structure is [Province, Lag_Char, RR, Lower, Upper]
     colnames(current_lag_df) <- c("Province", "Lag_Description", "RR", "Lower", "Upper") # Adjust if your columns are named differently
+    current_lag_df <- add_p_value_column(current_lag_df)
     current_lag_df$Lag_Numeric <- lag_val # Add a numeric lag column
+    current_lag_df <- current_lag_df[, c("Province", "Lag_Description", "Lag_Numeric", "RR", "Lower", "Upper", "p_value")]
+    # Save individual file for this lag
+    file_name_individual <- paste0("province_specific_lag", lag_val, "_RR.csv")
+    write.csv(current_lag_df, file.path(results_dir, file_name_individual), row.names = FALSE)
+    cat("Saved:", file_name_individual, "\n")
     all_prov_lagged_RR_list[[paste0("lag", lag_val)]] <- current_lag_df
   }
 }
@@ -704,15 +761,16 @@ for (lag_val in 0:lag_number) { # Use lag_number (which is 7 in your script)
     current_lag_df <- cbind(Province = rownames(current_lag_df), current_lag_df)
     rownames(current_lag_df) <- NULL # Remove row names after putting them in a column
 
+    # Add to the list for a combined file
+    # The 'Lag' column in your current objects is like "Lag 0", "Lag 1", etc.
+    colnames(current_lag_df) <- c("Province", "Lag_Description", "RR", "Lower", "Upper") # Adjust if your columns are named differently
+    current_lag_df <- add_p_value_column(current_lag_df)
+    current_lag_df$Lag_Numeric <- lag_val # Add a numeric lag column
+    current_lag_df <- current_lag_df[, c("Province", "Lag_Description", "Lag_Numeric", "RR", "Lower", "Upper", "p_value")]
     # Save individual file for this lag
     file_name_individual <- paste0("province_specific_cumulative_lag", lag_val, "_RR.csv")
     write.csv(current_lag_df, file.path(results_dir, file_name_individual), row.names = FALSE)
     cat("Saved:", file_name_individual, "\n")
-
-    # Add to the list for a combined file
-    # The 'Lag' column in your current objects is like "Lag 0", "Lag 1", etc.
-    colnames(current_lag_df) <- c("Province", "Lag_Description", "RR", "Lower", "Upper") # Adjust if your columns are named differently
-    current_lag_df$Lag_Numeric <- lag_val # Add a numeric lag column
     all_prov_lagged_RR_list[[paste0("cumulative_lag", lag_val)]] <- current_lag_df
   }
 }
@@ -721,7 +779,7 @@ for (lag_val in 0:lag_number) { # Use lag_number (which is 7 in your script)
 if (length(all_prov_lagged_RR_list) > 0) {
   combined_prov_lagged_RR <- do.call(rbind, all_prov_lagged_RR_list)
   # Reorder columns for the combined file
-  combined_prov_lagged_RR <- combined_prov_lagged_RR[, c("Province", "Lag_Numeric", "Lag_Description", "RR", "Lower", "Upper")]
+  combined_prov_lagged_RR <- combined_prov_lagged_RR[, c("Province", "Lag_Numeric", "Lag_Description", "RR", "Lower", "Upper", "p_value")]
   write.csv(combined_prov_lagged_RR, file.path(results_dir, "province_specific_all_lags_RR_combined.csv"), row.names = FALSE)
   cat("Saved: province_specific_all_lags_RR_combined.csv\n")
 }
@@ -771,19 +829,21 @@ print(RR_pooled_plot_df)
 RR_pooled_df <- RR_pooled_plot_df %>%
   remove_rownames() %>%
   column_to_rownames(var = "X_label") %>%
-  mutate_if(is.numeric, round, 5) %>%
+  mutate(p_value_raw = format_raw_p_value(p_value)) %>%
+  mutate(across(c("RR", "Lower", "Upper"), ~round(.x, 5))) %>%
   mutate("95% CI" = paste(Lower, "-", Upper, sep = " ")) %>%
-  select(RR, "95% CI")
+  mutate(p_value = format_p_value(p_value)) %>%
+  select(RR, "95% CI", p_value_raw, p_value)
 write.csv(RR_pooled_df, file.path(results_dir, "RR_pooled_df.csv"), row.names = TRUE)
 
-xtable(RR_pooled_df, digits = 2, align = "l|cc") %>%
+xtable(RR_pooled_df, digits = 2, align = "l|cccc") %>%
   print(file = file.path(results_dir, "RR_pooled_df.tex"), include.rownames = TRUE)
 
 # Select only relevant cols
 label_order <- c("lag0", "lag1", "lag2", "lag3", "lag0-1", "lag0-2", "lag0-3")
 RR_pooled_plot_df <- RR_pooled_plot_df %>%
   filter(X_label %in% label_order) %>%
-  select(RR, Lower, Upper, X_label)
+  select(RR, Lower, Upper, p_value, X_label)
 print(RR_pooled_plot_df)
 
 ggplot(RR_pooled_lag_filter, aes(x = X_label, y = RR)) +
@@ -929,7 +989,9 @@ forest_plot_df <- as.data.frame(RR_prov_lag0_pollutant) %>%
   mutate(
     pooled = FALSE
   ) %>%
-  select(-Lag)
+  select(-Lag) %>%
+  add_p_value_column() %>%
+  select(Province, RR, Lower, Upper, p_value, pooled)
 
 new_pooled_row <- lagged_RR_pooled_pollutant_df %>%
   filter(Lag == 0) %>%
@@ -938,9 +1000,10 @@ new_pooled_row <- lagged_RR_pooled_pollutant_df %>%
     Lower = round(Lower, 4),
     Upper = round(Upper, 4),
     Province = "Pooled",
+    p_value = round(p_value, 5),
     pooled = TRUE
   ) %>%
-  select(Province, RR, Lower, Upper, pooled)
+  select(Province, RR, Lower, Upper, p_value, pooled)
 
 forest_plot_df <- rbind(forest_plot_df, new_pooled_row)
 rownames(forest_plot_df) <- NULL
