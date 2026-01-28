@@ -1,4 +1,5 @@
 set.seed(123)
+
 setwd("~/Projects/hf_pm_analysis")
 
 library(xtable)
@@ -157,6 +158,7 @@ daily_avg <- dat %>%
     avg_pm25 = mean(PM2.5, na.rm = TRUE),
     sum_hf_prim = sum(hf_prim, na.rm = TRUE),
     avg_temp = mean(temperature, na.rm = TRUE),
+    avg_rh = mean(humidity, na.rm = TRUE),
     .groups = "drop"
   ) %>%
   mutate(
@@ -171,12 +173,24 @@ daily_avg <- dat %>%
     sum_hf_prim_ma7 = rollmean(
       sum_hf_prim, 7,
       fill = NA, align = "right"
+    ),
+    rh_ma7 = rollmean(
+      avg_rh, 7,
+      fill = NA, align = "right"
     )
   )
+
+date_range <- range(daily_avg$date_start, na.rm = TRUE)
+jan_starts <- seq(
+  from = as.Date(paste0(format(date_range[1], "%Y"), "-01-01")),
+  to = as.Date(paste0(format(date_range[2], "%Y"), "-01-01")),
+  by = "1 year"
+)
 
 write.csv(daily_avg, file.path(results_dir, "daily_avg_weather.csv"), row.names = FALSE)
 
 daily_pm25 <- ggplot(daily_avg, aes(x = date_start, y = pm25_ma7)) +
+  geom_vline(xintercept = jan_starts, linetype = "dashed", color = "gray20", size = 0.3) +
   geom_line(color = "blue") +
   labs(
     title = "Daily Average PM2.5 Levels (7-day Moving Average)",
@@ -210,6 +224,7 @@ ggsave(
 )
 
 daily_temp <- ggplot(daily_avg, aes(x = date_start, y = temp_ma7)) +
+  geom_vline(xintercept = jan_starts, linetype = "dashed", color = "gray20", size = 0.3) +
   geom_line(color = "darkgreen") +
   labs(
     title = "Daily Average Temperature Levels (7-day Moving Average)",
@@ -243,6 +258,7 @@ ggsave(
 )
 
 daily_hf <- ggplot(daily_avg, aes(x = date_start, y = sum_hf_prim_ma7)) +
+  geom_vline(xintercept = jan_starts, linetype = "dashed", color = "gray20", size = 0.3) +
   geom_line(color = "red") +
   labs(
     title = "Daily Total HF Hospitalizations (7-day Moving Average)",
@@ -268,6 +284,40 @@ ggsave(
 )
 ggsave(
   file.path(results_dir, "daily_sum_hf_prim.svg"),
+  width = 12,
+  height = 4,
+  unit = "in",
+  bg = "white",
+  dpi = 300
+)
+
+daily_rh <- ggplot(daily_avg, aes(x = date_start, y = rh_ma7)) +
+  geom_vline(xintercept = jan_starts, linetype = "dashed", color = "gray20", size = 0.3) +
+  geom_line(color = "purple") +
+  labs(
+    title = "Daily Average Relative Humidity Levels (7-day Moving Average)",
+    x = "Date",
+    y = "Average Relative Humidity (%)"
+  ) +
+  scale_x_date(
+    date_breaks = "4 months",
+    date_labels = "%b %Y"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+  )
+ggsave(
+  file.path(results_dir, "daily_avg_rh.png"),
+  width = 12,
+  height = 4,
+  unit = "in",
+  bg = "white",
+  dpi = 300
+)
+ggsave(
+  file.path(results_dir, "daily_avg_rh.svg"),
   width = 12,
   height = 4,
   unit = "in",

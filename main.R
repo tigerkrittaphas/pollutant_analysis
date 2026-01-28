@@ -16,10 +16,10 @@ library(xtable)
 
 ## SELECT POLLUTANT OF INTEREST
 pollutant_col_name <- "PM2.5"
-outcome_col_name <- "hf_prim_65"
+outcome_col_name <- "hf_prim"
 
 lag_number <- 7
-output_dir <- "16Nov"
+output_dir <- "19Jan"
 
 # ===========================
 # properly format date
@@ -809,14 +809,14 @@ cat("\nAll specified results have been saved.\n")
 # 11. Plotting Boxplot for lag0, lag1, lag2, lag3, lag0-1, lag 0-2, lag0-3
 
 RR_pooled_lag_filter <- lagged_RR_pooled_pollutant_df %>%
-  filter(Lag <= 3) %>%
+  filter(Lag <= 7) %>%
   mutate(
     Effect_Type = "Individual",
     X_label = paste("lag", Lag, sep = "")
   )
 
 RR_pooled_cum_filter <- pooled_cumulative_RR_df %>%
-  filter(between(Lag, 0, 3)) %>%
+  filter(between(Lag, 0, 7)) %>%
   mutate(
     Effect_Type = "Cumulative Lag",
     X_label = paste("lag0-", Lag, sep = "")
@@ -840,7 +840,7 @@ xtable(RR_pooled_df, digits = 2, align = "l|cccc") %>%
   print(file = file.path(results_dir, "RR_pooled_df.tex"), include.rownames = TRUE)
 
 # Select only relevant cols
-label_order <- c("lag0", "lag1", "lag2", "lag3", "lag0-1", "lag0-2", "lag0-3")
+label_order <- c("lag0", "lag1", "lag2", "lag3", "lag4", "lag5", "lag6", "lag7", "lag0-1", "lag0-2", "lag0-3", "lag0-4", "lag0-5", "lag0-6", "lag0-7")
 RR_pooled_plot_df <- RR_pooled_plot_df %>%
   filter(X_label %in% label_order) %>%
   select(RR, Lower, Upper, p_value, X_label)
@@ -946,7 +946,7 @@ rr_cum_line_plot <- RR_pooled_cum_filter %>%
   geom_line(color = "blue", linewidth = 0.8) +
   scale_x_continuous(
     breaks = seq(1, nrow(RR_pooled_cum_filter), by = 1),
-    labels = c("Lag0", "Lag0-1", "Lag0-2", "Lag0-3")
+    labels = c("Lag0", "Lag0-1", "Lag0-2", "Lag0-3", "Lag0-4", "Lag0-5", "Lag0-6", "Lag0-7")
   ) +
   labs(
     subtitle = outcome_plot_name,

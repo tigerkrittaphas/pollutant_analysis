@@ -54,7 +54,7 @@ plot_across_subgroup <- function(
 # ====================== RUN THE CODE =====================
 #
 # set the output dir
-BASE_OUTPUT_DIR <- "output/regional_subgroup_analysis_30jul"
+BASE_OUTPUT_DIR <- "output/regional_subgroup_analysis_16Nov"
 
 # load the subgroup analysis data
 

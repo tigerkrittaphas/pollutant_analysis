@@ -368,11 +368,11 @@ dat_full$stratum <- as.factor(dat_full$year:dat_full$month:dat_full$dow)
 POLLUTANT_VAR <- "PM2.5"
 OUTCOME_VAR <- "hf_prim"
 LAG <- 7
-BASE_OUTPUT_DIR <- "output/regional_subgroup_analysis_16Nov"
+BASE_OUTPUT_DIR <- "output/regional_subgroup_analysis_7jan"
 # The column name in 'dat_full' used to split the data into subgroups.
 # Ensure this column exists in your dataframe. For now we can analyse "region" and "nhso_region_code"
 SUBGROUPING_COLUMN <- "nhso_region_code"
-
+SUBGROUPING_COLUMN <- "region" # uncomment this line to use "region" as subgrouping column
 
 # --- 3. Run Analysis Loop for Each Subgroup ---
 
@@ -452,15 +452,15 @@ RR_pooled_lagged <- read.csv("/Users/tiger/Projects/hf_pm_analysis/output/30jul/
   select(-Lag) %>%
   select(c("Region", "RR", "Lower", "Upper", "p_value", "pooled"))
 
-for (i in seq(subgroups)) {
-  subgroup_rr <- RR_pooled_list[[i]]["lag0", ] %>%
+for (group in subgroups) {
+  subgroup_rr <- RR_pooled_list[[group]]["lag0", ] %>%
     ensure_p_value_column() %>%
     mutate(
       RR = round(RR, 4),
       Lower = round(Lower, 4),
       Upper = round(Upper, 4),
       p_value = round(p_value, 5),
-      Region = subgroups[i],
+      Region = group,
       pooled = FALSE
     ) %>%
     select(c("Region", "RR", "Lower", "Upper", "p_value", "pooled"))
@@ -469,6 +469,7 @@ for (i in seq(subgroups)) {
 
 row.names(RR_pooled_lagged) <- NULL # remove row names
 write.csv(RR_pooled_lagged, file.path(BASE_OUTPUT_DIR, paste0("pooled_lagged_RR_", SUBGROUPING_COLUMN, ".csv")), row.names = FALSE)
+
 
 if (SUBGROUPING_COLUMN == "region") {
   # If the subgroup == region, This if loop is for properly sorting of the region order
@@ -495,7 +496,7 @@ if (SUBGROUPING_COLUMN == "region") {
     labs(
       title = paste(
         "Relative Risk per 10 μg/m³ increase of",
-        pollutant_col_name,
+        POLLUTANT_VAR,
         "\n By Region",
         sep = " "
       ),
@@ -508,7 +509,7 @@ if (SUBGROUPING_COLUMN == "region") {
       legend.position = "none"
     )
   ggsave(
-    file.path(BASE_OUTPUT_DIR, paste0("forest_plot_", SUBGROUPING_COLUMN, "_", pollutant_col_name, ".png")),
+    file.path(BASE_OUTPUT_DIR, paste0("forest_plot_", SUBGROUPING_COLUMN, "_", POLLUTANT_VAR, ".png")),
     plot = forest_subgroup_plot,
     width = 8,
     height = 12,
@@ -517,7 +518,7 @@ if (SUBGROUPING_COLUMN == "region") {
     bg = "white"
   )
   ggsave(
-    file.path(BASE_OUTPUT_DIR, paste0("forest_plot_", SUBGROUPING_COLUMN, "_", pollutant_col_name, ".svg")),
+    file.path(BASE_OUTPUT_DIR, paste0("forest_plot_", SUBGROUPING_COLUMN, "_", POLLUTANT_VAR, ".svg")),
     plot = forest_subgroup_plot,
     width = 8,
     height = 12,
@@ -550,7 +551,7 @@ if (SUBGROUPING_COLUMN == "region") {
     labs(
       title = paste(
         "Relative Risk per 10 μg/m³ increase of",
-        pollutant_col_name,
+        POLLUTANT_VAR,
         "\n By NHSO Region Code",
         sep = " "
       ),
@@ -563,7 +564,7 @@ if (SUBGROUPING_COLUMN == "region") {
       legend.position = "none"
     )
   ggsave(
-    file.path(BASE_OUTPUT_DIR, paste0("forest_plot_", SUBGROUPING_COLUMN, "_", pollutant_col_name, ".png")),
+    file.path(BASE_OUTPUT_DIR, paste0("forest_plot_", SUBGROUPING_COLUMN, "_", POLLUTANT_VAR, ".png")),
     plot = forest_subgroup_plot,
     width = 8,
     height = 12,
@@ -572,7 +573,7 @@ if (SUBGROUPING_COLUMN == "region") {
     bg = "white"
   )
   ggsave(
-    file.path(BASE_OUTPUT_DIR, paste0("forest_plot_", SUBGROUPING_COLUMN, "_", pollutant_col_name, ".svg")),
+    file.path(BASE_OUTPUT_DIR, paste0("forest_plot_", SUBGROUPING_COLUMN, "_", POLLUTANT_VAR, ".svg")),
     plot = forest_subgroup_plot,
     width = 8,
     height = 12,
