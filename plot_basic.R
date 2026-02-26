@@ -1,6 +1,11 @@
 set.seed(123)
 
-setwd("~/Projects/hf_pm_analysis")
+project_root <- getOption("hf_pm_analysis.root", getwd())
+data_path <- getOption(
+  "hf_pm_analysis.data_path",
+  file.path(project_root, "data", "daily_all_weather_30jul.csv")
+)
+pollutant_col_name <- getOption("hf_pm_analysis.pollutant", "PM2.5")
 
 library(xtable)
 library(dplyr)
@@ -10,7 +15,7 @@ library(patchwork)
 library(reshape2)
 library(tidyr)
 
-dat <- read.csv("data/daily_all_weather_30jul.csv")
+dat <- read.csv(data_path)
 
 # properly format date
 dat$date_start <- as.Date(dat$date_start, "%Y-%m-%d")
@@ -21,12 +26,22 @@ dat$year <- as.factor(format(dat$date_start, format = "%Y"))
 # get strata for case crossover analysis
 dat$stratum <- as.factor(dat$year:dat$month:dat$dow)
 
-results_dir <- "output/demographic_pollutants"
+results_dir <- getOption("hf_pm_analysis.basic_output_dir", "output/demographic_pollutants")
 dir.create(results_dir, recursive = TRUE, showWarnings = FALSE)
 
 invalid_prov <- c("Saraburi", "Samut Sakhon", "Nonthaburi")
 dat <- dat %>%
   filter(!prov_name %in% invalid_prov)
+
+hospitalization_vars <- c("hf_prim", "af_prim", "af", "af_other", "hf", "hf_other")
+hospitalization_labels <- c(
+  hf_prim = "HF Primary",
+  af_prim = "AF Primary",
+  af = "AF All visits",
+  af_other = "AF Secondary",
+  hf = "HF All visits",
+  hf_other = "HF Secondary"
+)
 
 # ==============================
 # Plotting all basic demographic data and pollutant data
@@ -156,9 +171,9 @@ daily_avg <- dat %>%
   group_by(date_start) %>%
   summarise(
     avg_pm25 = mean(PM2.5, na.rm = TRUE),
-    sum_hf_prim = sum(hf_prim, na.rm = TRUE),
     avg_temp = mean(temperature, na.rm = TRUE),
     avg_rh = mean(humidity, na.rm = TRUE),
+    across(all_of(hospitalization_vars), ~ sum(.x, na.rm = TRUE), .names = "sum_{.col}"),
     .groups = "drop"
   ) %>%
   mutate(
@@ -170,9 +185,10 @@ daily_avg <- dat %>%
       avg_temp, 7,
       fill = NA, align = "right"
     ),
-    sum_hf_prim_ma7 = rollmean(
-      sum_hf_prim, 7,
-      fill = NA, align = "right"
+    across(
+      all_of(paste0("sum_", hospitalization_vars)),
+      ~ rollmean(.x, 7, fill = NA, align = "right"),
+      .names = "{.col}_ma7"
     ),
     rh_ma7 = rollmean(
       avg_rh, 7,
@@ -257,39 +273,47 @@ ggsave(
   dpi = 300
 )
 
-daily_hf <- ggplot(daily_avg, aes(x = date_start, y = sum_hf_prim_ma7)) +
-  geom_vline(xintercept = jan_starts, linetype = "dashed", color = "gray20", size = 0.3) +
-  geom_line(color = "red") +
-  labs(
-    title = "Daily Total HF Hospitalizations (7-day Moving Average)",
-    x = "Date",
-    y = "Sum of HF Hospitalizations"
-  ) +
-  scale_x_date(
-    date_breaks = "4 months",
-    date_labels = "%b %Y"
-  ) +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(hjust = 0.5),
-    axis.text.x = element_text(angle = 45, hjust = 1),
+for (var in hospitalization_vars) {
+  ma_col <- paste0("sum_", var, "_ma7")
+  var_label <- hospitalization_labels[[var]]
+
+  daily_hosp <- ggplot(daily_avg, aes(x = date_start, y = .data[[ma_col]])) +
+    geom_vline(xintercept = jan_starts, linetype = "dashed", color = "gray20", size = 0.3) +
+    geom_line(color = "red") +
+    labs(
+      title = paste("Daily Total", var_label, "Hospitalizations (7-day Moving Average)"),
+      x = "Date",
+      y = paste("Sum of", var_label, "Hospitalizations")
+    ) +
+    scale_x_date(
+      date_breaks = "4 months",
+      date_labels = "%b %Y"
+    ) +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(hjust = 0.5),
+      axis.text.x = element_text(angle = 45, hjust = 1),
+    )
+
+  ggsave(
+    file.path(results_dir, paste0("daily_sum_", var, ".png")),
+    plot = daily_hosp,
+    width = 12,
+    height = 4,
+    unit = "in",
+    bg = "white",
+    dpi = 300
   )
-ggsave(
-  file.path(results_dir, "daily_sum_hf_prim.png"),
-  width = 12,
-  height = 4,
-  unit = "in",
-  bg = "white",
-  dpi = 300
-)
-ggsave(
-  file.path(results_dir, "daily_sum_hf_prim.svg"),
-  width = 12,
-  height = 4,
-  unit = "in",
-  bg = "white",
-  dpi = 300
-)
+  ggsave(
+    file.path(results_dir, paste0("daily_sum_", var, ".svg")),
+    plot = daily_hosp,
+    width = 12,
+    height = 4,
+    unit = "in",
+    bg = "white",
+    dpi = 300
+  )
+}
 
 daily_rh <- ggplot(daily_avg, aes(x = date_start, y = rh_ma7)) +
   geom_vline(xintercept = jan_starts, linetype = "dashed", color = "gray20", size = 0.3) +
