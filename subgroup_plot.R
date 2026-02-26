@@ -2,13 +2,16 @@
 
 library(ggplot2)
 library(dplyr)
+library(rlang)
 
-# Set the plotting function
 plot_across_subgroup <- function(
     df,
     subgroup_col,
-    max_lag = 4) {
-  # The '{{}}' syntax is used to correctly handle the subgroup_col argument
+    max_lag = 4,
+    title = "RR association with a 10-unit increase in PM2.5",
+    subtitle = "RR association by subgroup") {
+  subgroup_sym <- rlang::sym(subgroup_col)
+
   rr_line_plot <- df %>%
     mutate(across(
       c("Lag", "RR", "Lower", "Upper"),
@@ -16,100 +19,90 @@ plot_across_subgroup <- function(
     )) %>%
     filter(Lag < max_lag) %>%
     ggplot(
-      # Map color, fill, and group to your subgroup column
       aes(
         x = Lag,
         y = RR,
         ymin = Lower,
         ymax = Upper,
-        color = {{ subgroup_col }},
-        fill = {{ subgroup_col }},
-        group = {{ subgroup_col }}
+        color = !!subgroup_sym,
+        fill = !!subgroup_sym,
+        group = !!subgroup_sym
       )
     ) +
-    # Use alpha to make ribbons transparent, the fill color is from aes()
     geom_errorbar(width = 0.2, linewidth = 0.8, alpha = 0.4, position = "dodge") +
     geom_line(linewidth = 0.8) +
     geom_hline(yintercept = 1, linetype = "dashed", color = "grey") +
     scale_x_continuous(breaks = 0:(max_lag - 1)) +
     labs(
-      # You may want to make the title and subtitle more dynamic
-      subtitle = "RR association by subgroup",
-      title = "RR association with a 10-unit increase in PM2.5",
+      subtitle = subtitle,
+      title = title,
       x = "Lag",
       y = "RR and 95% CI",
-      # These lines will rename the legend
       color = "Subgroup",
       fill = "Subgroup"
     ) +
-    theme_minimal(base_size = 14) + # A clean theme to start with
+    theme_minimal(base_size = 14) +
     theme(
       plot.title = element_text(hjust = 0.5, face = "bold"),
       plot.subtitle = element_text(hjust = 0.5),
-      legend.position = "right" # Move legend to the bottom
+      legend.position = "right"
     )
 
   return(rr_line_plot)
 }
-# ====================== RUN THE CODE =====================
-#
-# set the output dir
-BASE_OUTPUT_DIR <- "output/regional_subgroup_analysis_16Nov"
 
-# load the subgroup analysis data
+run_subgroup_plot <- function(
+    input_csv,
+    subgroup_col,
+    output_dir,
+    max_lag = 4,
+    title = "RR association with a 10-unit increase in PM2.5",
+    subtitle = "RR association by subgroup",
+    output_prefix = "subgroup_RR_lagged_plot") {
+  df <- read.csv(input_csv)
+  plot_obj <- plot_across_subgroup(df, subgroup_col, max_lag, title, subtitle)
 
-# Gender
-pooled_rr_male <- read.csv("/Users/tiger/Projects/hf_pm_analysis/output/30jul/results_PM2.5-hf_prim_male-7lag/pooled_lagged_RR.csv")
-pooled_rr_male$gender <- "male"
-pooled_rr_female <- read.csv("/Users/tiger/Projects/hf_pm_analysis/output/30jul/results_PM2.5-hf_prim_female-7lag/pooled_lagged_RR.csv")
-pooled_rr_female$gender <- "female"
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+  ggsave(
+    file.path(output_dir, paste0(output_prefix, ".png")),
+    plot = plot_obj,
+    width = 8,
+    height = 6,
+    dpi = 300,
+    bg = "white"
+  )
+  ggsave(
+    file.path(output_dir, paste0(output_prefix, ".svg")),
+    plot = plot_obj,
+    width = 8,
+    height = 6,
+    dpi = 300,
+    bg = "white"
+  )
 
-# Age 65+
-pooled_rr_under65 <- read.csv("/Users/tiger/Projects/hf_pm_analysis/output/30jul/results_PM2.5-hf_prim_under65-7lag/pooled_lagged_RR.csv")
-pooled_rr_under65$age_group <- "under65"
-pooled_rr_over65 <- read.csv("/Users/tiger/Projects/hf_pm_analysis/output/30jul/results_PM2.5-hf_prim_over65-7lag/pooled_lagged_RR.csv")
-pooled_rr_over65$age_group <- "over65"
+  invisible(plot_obj)
+}
 
-# Gender DF plot
-pooled_rr_gender <- rbind(pooled_rr_male, pooled_rr_female)
-write.csv(pooled_rr_gender, file.path(BASE_OUTPUT_DIR, "pooled_rr_gender.csv"))
+if (sys.nframe() == 0) {
+  input_csv <- getOption("hf_pm_analysis.subgroup_plot_input", NA_character_)
+  subgroup_col <- getOption("hf_pm_analysis.subgroup_plot_col", "Subgroup")
+  output_dir <- getOption("hf_pm_analysis.subgroup_plot_output_dir", "output/subgroup_plots")
+  max_lag <- getOption("hf_pm_analysis.subgroup_plot_max_lag", 4)
+  title <- getOption("hf_pm_analysis.subgroup_plot_title", "RR association with a 10-unit increase in PM2.5")
+  subtitle <- getOption("hf_pm_analysis.subgroup_plot_subtitle", "RR association by subgroup")
+  output_prefix <- getOption("hf_pm_analysis.subgroup_plot_prefix", "subgroup_RR_lagged_plot")
 
-gender_subplot <- plot_across_subgroup(pooled_rr_gender, gender)
-ggsave(
-  file.path(BASE_OUTPUT_DIR, "gender_RR_lagged_plot.png"),
-  plot = gender_subplot,
-  width = 8,
-  height = 6,
-  dpi = 300,
-  bg = "white"
-)
-ggsave(
-  file.path(BASE_OUTPUT_DIR, "gender_RR_lagged_plot.svg"),
-  plot = gender_subplot,
-  width = 8,
-  height = 6,
-  dpi = 300,
-  bg = "white"
-)
-
-# Age DF plot
-pooled_rr_age <- rbind(pooled_rr_under65, pooled_rr_over65)
-write.csv(pooled_rr_age, file.path(BASE_OUTPUT_DIR, "pooled_rr_age.csv"))
-
-age_subplot <- plot_across_subgroup(pooled_rr_age, age_group)
-ggsave(
-  file.path(BASE_OUTPUT_DIR, "age_RR_lagged_plot.png"),
-  plot = age_subplot,
-  width = 8,
-  height = 6,
-  dpi = 300,
-  bg = "white"
-)
-ggsave(
-  file.path(BASE_OUTPUT_DIR, "age_RR_lagged_plot.svg"),
-  plot = age_subplot,
-  width = 8,
-  height = 6,
-  dpi = 300,
-  bg = "white"
-)
+  if (!is.na(input_csv) && file.exists(input_csv)) {
+    run_subgroup_plot(
+      input_csv = input_csv,
+      subgroup_col = subgroup_col,
+      output_dir = output_dir,
+      max_lag = max_lag,
+      title = title,
+      subtitle = subtitle,
+      output_prefix = output_prefix
+    )
+  } else {
+    stop("subgroup_plot.R: input CSV not found. Set hf_pm_analysis.subgroup_plot_input.")
+  }
+}

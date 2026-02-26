@@ -1,7 +1,11 @@
 set.seed(123)
-setwd("~/Projects/hf_pm_analysis")
 
-dat <- read.csv("data/daily_all_weather_30jul.csv")
+project_root <- getOption("hf_pm_analysis.root", getwd())
+data_path <- getOption(
+  "hf_pm_analysis.data_path",
+  file.path(project_root, "data", "daily_all_weather_30jul.csv")
+)
+dat <- read.csv(data_path)
 
 # Load necessary packages
 
@@ -15,11 +19,10 @@ library(tidyverse)
 library(xtable)
 
 ## SELECT POLLUTANT OF INTEREST
-pollutant_col_name <- "PM2.5"
-outcome_col_name <- "hf_prim"
-
-lag_number <- 7
-output_dir <- "19Jan"
+pollutant_col_name <- getOption("hf_pm_analysis.pollutant", "PM2.5")
+outcome_col_name <- getOption("hf_pm_analysis.outcome", "hf_prim")
+lag_number <- getOption("hf_pm_analysis.lag", 7)
+output_dir <- getOption("hf_pm_analysis.main_output_dir", "19Jan")
 
 # ===========================
 # properly format date
@@ -433,42 +436,6 @@ plot(cpred_pooled_pollutant, "slices",
 )
 dev.off()
 
-
-# create another crosspred obj that have prediction across pollutant ranges
-cpred_pooled_pollutant_range <- crosspred(cb_pred_basis_pollutant,
-  coef = coef(mvmeta_results_pollutant),
-  vcov = vcov(mvmeta_results_pollutant),
-  model.link = "log",
-  bylag = 1,
-  at = pollutant_pred_sequence,
-  lag = lag_number,
-  cumul = TRUE
-)
-
-png(
-  file.path(results_dir, paste0("plot_range_association", pollutant_col_name, "-", outcome_col_name, ".png")),
-  width = 10,
-  height = 6,
-  units = "in",
-  res = 300
-)
-plot(cpred_pooled_pollutant_range, "overall",
-  lag = 0, ylab = "RR and 95% CI",
-  main = paste(outcome_plot_name, "\nAssociation with", pollutant_col_name, "across its range"),
-  xlab = paste(pollutant_col_name, "concentration ((μg/m³))"),
-)
-dev.off()
-svg(
-  file.path(results_dir, paste0("plot_range_association", pollutant_col_name, "-", outcome_col_name, ".svg")),
-  width = 10,
-  height = 6,
-)
-plot(cpred_pooled_pollutant_range, "overall",
-  lag = 0, ylab = "RR and 95% CI",
-  main = paste(outcome_plot_name, "\nAssociation with", pollutant_col_name, "across its range"),
-  xlab = paste(pollutant_col_name, "concentration ((μg/m³))"),
-)
-dev.off()
 
 ## ESTIMATED EFFECTS AT EACH LAG
 lagged_RR_pooled_pollutant <- with(cpred_pooled_pollutant, t(rbind(matRRfit, matRRlow, matRRhigh)))

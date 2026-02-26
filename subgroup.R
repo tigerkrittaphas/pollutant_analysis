@@ -29,6 +29,13 @@ library(xtable)
 # Set seed for reproducibility
 set.seed(123)
 
+# Options-driven configuration (allows orchestration from a single runner)
+project_root <- getOption("hf_pm_analysis.root", getwd())
+data_path <- getOption(
+  "hf_pm_analysis.data_path",
+  file.path(project_root, "data", "daily_all_weather_30jul.csv")
+)
+
 # ============================
 # Helper Functions
 # ============================
@@ -332,28 +339,39 @@ run_analysis_for_subgroup <- function(subgroup_data,
 # --- 1. Load and Prepare Full Dataset ---
 cat("Loading and preparing the main dataset...\n")
 
-# Make sure the working directory is set to your project root
-# setwd("~/Projects/hf_pm_analysis")
-dat_full <- read.csv("data/daily_all_weather_30jul.csv")
+dat_full <- read.csv(data_path)
 
-region_list <- list(
-  North = c("Chiang Rai", "Nan", "Phayao", "Chiang Mai", "Mae Hong Son", "Phrae", "Lampang", "Lamphun", "Uttaradit"),
-  Northeast = c("Nong Khai", "Nakhon Phanom", "Sakon Nakhon", "Udon Thani", "Loei", "Mukdahan", "Khon Kaen", "Nakhon Ratchasima", "Buri Ram", "Ubon Ratchathani"),
-  West = c("Tak", "Kanchanaburi", "Ratchaburi", "Prachuap Khiri Khan"),
-  Central = c("Bangkok", "Phitsanulok", "Sukhothai", "Phetchabun", "Phichit", "Kamphaeng Phet", "Nakhon Sawan", "Lop Buri", "Uthai Thani", "Saraburi", "Phra Nakhon Si Ayutthaya", "Suphan Buri", "Pathum Thani", "Nonthaburi", "Nakhon Pathom", "Samut Prakan", "Samut Sakhon", "Samut Songkhram"),
-  East = c("Sa Kaeo", "Prachin Buri", "Chachoengsao", "Chon Buri", "Rayong", "Chanthaburi", "Trat"),
-  South = c("Nakhon Si Thammarat", "Phuket", "Surat Thani", "Trang", "Pattani", "Songkhla", "Satun", "Narathiwat", "Yala")
-)
+# --- 2. Define Analysis Parameters ---
 
-# 2. Convert the list into a two-column dataframe for mapping
-# This creates a lookup table with 'prov_name' and 'region'
-region_map_df <- stack(region_list) %>%
-  rename(prov_name = values, region = ind)
+## !! IMPORTANT: SPECIFY YOUR PARAMETERS HERE !! ##
+POLLUTANT_VAR <- getOption("hf_pm_analysis.pollutant", "PM2.5")
+OUTCOME_VAR <- getOption("hf_pm_analysis.outcome", "hf_prim")
+LAG <- getOption("hf_pm_analysis.lag", 7)
+BASE_OUTPUT_DIR <- getOption("hf_pm_analysis.subgroup_output_dir", "output/regional_subgroup_analysis_7jan")
+# The column name in 'dat_full' used to split the data into subgroups.
+# Ensure this column exists in your dataframe. For now we can analyse "region" and "nhso_region_code"
+SUBGROUPING_COLUMN <- getOption("hf_pm_analysis.subgroup_column", "region")
 
-# 3. Join the region mapping to your main dataframe 'dat'
-# This assumes your dataframe is named 'dat' and has a 'prov_name' column
-dat_full <- dat_full %>%
-  left_join(region_map_df, by = "prov_name")
+# Build region mapping only if requested
+region_map_df <- NULL
+if (SUBGROUPING_COLUMN == "region") {
+  region_list <- list(
+    North = c("Chiang Rai", "Nan", "Phayao", "Chiang Mai", "Mae Hong Son", "Phrae", "Lampang", "Lamphun", "Uttaradit"),
+    Northeast = c("Nong Khai", "Nakhon Phanom", "Sakon Nakhon", "Udon Thani", "Loei", "Mukdahan", "Khon Kaen", "Nakhon Ratchasima", "Buri Ram", "Ubon Ratchathani"),
+    West = c("Tak", "Kanchanaburi", "Ratchaburi", "Prachuap Khiri Khan"),
+    Central = c("Bangkok", "Phitsanulok", "Sukhothai", "Phetchabun", "Phichit", "Kamphaeng Phet", "Nakhon Sawan", "Lop Buri", "Uthai Thani", "Saraburi", "Phra Nakhon Si Ayutthaya", "Suphan Buri", "Pathum Thani", "Nonthaburi", "Nakhon Pathom", "Samut Prakan", "Samut Sakhon", "Samut Songkhram"),
+    East = c("Sa Kaeo", "Prachin Buri", "Chachoengsao", "Chon Buri", "Rayong", "Chanthaburi", "Trat"),
+    South = c("Nakhon Si Thammarat", "Phuket", "Surat Thani", "Trang", "Pattani", "Songkhla", "Satun", "Narathiwat", "Yala")
+  )
+
+  # Convert the list into a two-column dataframe for mapping
+  region_map_df <- stack(region_list) %>%
+    rename(prov_name = values, region = ind)
+
+  # Join the region mapping to the main dataframe
+  dat_full <- dat_full %>%
+    left_join(region_map_df, by = "prov_name")
+}
 
 # Properly format date and create time-stratification variables
 dat_full$date_start <- as.Date(dat_full$date_start, "%Y-%m-%d")
@@ -361,18 +379,6 @@ dat_full$dow <- as.factor(weekdays(dat_full$date_start))
 dat_full$month <- as.factor(months(dat_full$date_start))
 dat_full$year <- as.factor(format(dat_full$date_start, format = "%Y"))
 dat_full$stratum <- as.factor(dat_full$year:dat_full$month:dat_full$dow)
-
-# --- 2. Define Analysis Parameters ---
-
-## !! IMPORTANT: SPECIFY YOUR PARAMETERS HERE !! ##
-POLLUTANT_VAR <- "PM2.5"
-OUTCOME_VAR <- "hf_prim"
-LAG <- 7
-BASE_OUTPUT_DIR <- "output/regional_subgroup_analysis_7jan"
-# The column name in 'dat_full' used to split the data into subgroups.
-# Ensure this column exists in your dataframe. For now we can analyse "region" and "nhso_region_code"
-SUBGROUPING_COLUMN <- "nhso_region_code"
-SUBGROUPING_COLUMN <- "region" # uncomment this line to use "region" as subgrouping column
 
 # --- 3. Run Analysis Loop for Each Subgroup ---
 
@@ -415,42 +421,96 @@ for (group in subgroups) {
 
 cat("\n\nAll subgroup analyses are complete.\n")
 
-cat("\nPrinting NHSO region codes mapping.")
+if ("nhso_region_code" %in% names(dat_full)) {
+  cat("\nSaving NHSO region codes mapping.")
+  nhso_code_map <- dat_full %>%
+    select(nhso_region_code, prov_name) %>%
+    unique() %>%
+    group_by(nhso_region_code) %>%
+    mutate(prov_name = paste(prov_name, collapse = ", ")) %>%
+    unique() %>%
+    arrange(nhso_region_code)
+  write.csv(nhso_code_map, file.path(BASE_OUTPUT_DIR, "nhso_region_codes_mapping.csv"), row.names = FALSE)
+}
 
-nhso_code_map <- dat_full %>%
-  select(nhso_region_code, prov_name) %>%
-  unique() %>%
-  group_by(nhso_region_code) %>%
-  mutate(prov_name = paste(prov_name, collapse = ", ")) %>%
-  unique() %>%
-  arrange(nhso_region_code)
-write.csv(nhso_code_map, file.path(BASE_OUTPUT_DIR, "nhso_region_codes_mapping.csv"), row.names = FALSE)
+if ("region" %in% names(dat_full)) {
+  geo_code_map <- dat_full %>%
+    select(region, prov_name) %>%
+    unique() %>%
+    group_by(region) %>%
+    mutate(prov_name = paste(prov_name, collapse = ", ")) %>%
+    unique() %>%
+    arrange(region)
+  write.csv(geo_code_map, file.path(BASE_OUTPUT_DIR, "regions_mapping.csv"), row.names = FALSE)
+}
 
-geo_code_map <- dat_full %>%
-  select(region, prov_name) %>%
-  unique() %>%
-  group_by(region) %>%
-  mutate(prov_name = paste(prov_name, collapse = ", ")) %>%
-  unique() %>%
-  arrange(region)
-write.csv(geo_code_map, file.path(BASE_OUTPUT_DIR, "regions_mapping.csv"), row.names = FALSE)
+### build combined lagged/cumulative RR tables for subgroup plotting
+combined_lagged_list <- list()
+combined_cumulative_list <- list()
+
+for (group in subgroups) {
+  rr_subgroup <- RR_pooled_list[[group]]
+  if (is.null(rr_subgroup) || nrow(rr_subgroup) < (LAG + 1)) {
+    next
+  }
+
+  lagged_rows <- rr_subgroup[seq_len(LAG + 1), , drop = FALSE]
+  cumulative_rows <- rr_subgroup[(LAG + 2):(2 * (LAG + 1)), , drop = FALSE]
+
+  lagged_rows$Subgroup <- group
+  cumulative_rows$Subgroup <- group
+
+  combined_lagged_list[[group]] <- lagged_rows
+  combined_cumulative_list[[group]] <- cumulative_rows
+}
+
+if (length(combined_lagged_list) > 0) {
+  combined_lagged <- do.call(rbind, combined_lagged_list)
+  rownames(combined_lagged) <- NULL
+  write.csv(combined_lagged, file.path(BASE_OUTPUT_DIR, paste0("pooled_lagged_RR_by_", SUBGROUPING_COLUMN, ".csv")), row.names = FALSE)
+}
+
+if (length(combined_cumulative_list) > 0) {
+  combined_cumulative <- do.call(rbind, combined_cumulative_list)
+  rownames(combined_cumulative) <- NULL
+  write.csv(combined_cumulative, file.path(BASE_OUTPUT_DIR, paste0("pooled_cumulative_RR_by_", SUBGROUPING_COLUMN, ".csv")), row.names = FALSE)
+}
 
 ### plot forest plot pooled estimate for each subgroup
 
-# read pooled estimates for all provinces
-RR_pooled_lagged <- read.csv("/Users/tiger/Projects/hf_pm_analysis/output/30jul/results_PM2.5-hf_prim-7lag/pooled_lagged_RR.csv") %>%
-  filter(Lag == 0) %>%
-  ensure_p_value_column() %>%
-  mutate(
-    RR = round(RR, 4),
-    Lower = round(Lower, 4),
-    Upper = round(Upper, 4),
-    p_value = round(p_value, 5),
-    Region = "Pooled",
-    pooled = TRUE
-  ) %>%
-  select(-Lag) %>%
-  select(c("Region", "RR", "Lower", "Upper", "p_value", "pooled"))
+# read pooled estimates for all provinces (optional, from main analysis)
+overall_results_dir <- getOption("hf_pm_analysis.overall_results_dir", NA_character_)
+overall_pooled_path <- if (!is.na(overall_results_dir)) {
+  file.path(overall_results_dir, "pooled_lagged_RR.csv")
+} else {
+  NA_character_
+}
+
+RR_pooled_lagged <- NULL
+if (!is.na(overall_pooled_path) && file.exists(overall_pooled_path)) {
+  RR_pooled_lagged <- read.csv(overall_pooled_path) %>%
+    filter(Lag == 0) %>%
+    ensure_p_value_column() %>%
+    mutate(
+      RR = round(RR, 4),
+      Lower = round(Lower, 4),
+      Upper = round(Upper, 4),
+      p_value = round(p_value, 5),
+      Region = "Pooled",
+      pooled = TRUE
+    ) %>%
+    select(-Lag) %>%
+    select(c("Region", "RR", "Lower", "Upper", "p_value", "pooled"))
+} else {
+  RR_pooled_lagged <- data.frame(
+    Region = character(0),
+    RR = numeric(0),
+    Lower = numeric(0),
+    Upper = numeric(0),
+    p_value = numeric(0),
+    pooled = logical(0)
+  )
+}
 
 for (group in subgroups) {
   subgroup_rr <- RR_pooled_list[[group]]["lag0", ] %>%
